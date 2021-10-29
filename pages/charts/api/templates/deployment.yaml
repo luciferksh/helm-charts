@@ -2,69 +2,75 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: pages
-    tier: service
-  name: pages
-  namespace: ambala
+    app: {{ include "api.fullname" . }}
+  name: {{ include "api.fullname" . }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.deployment.replicaCount}}
   selector:
     matchLabels:
-      app: pages
-      tier: service
-  strategy: {}
+      app: {{ include "api.fullname" . }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+     {{- if ge .Values.deployment.replicaCount 5.0 }}
+      maxUnavailable: 2
+     {{- else }}
+      maxUnavailable: 0
+     {{- end }}
   template:
     metadata:
       labels:
-        app: pages
-        tier: service
+        app: {{ include "api.fullname" . }}
     spec:
       containers:
-        - image: dellcloud/pages:monitor
-          name: pages
-          imagePullPolicy: IfNotPresent
+        - image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          name: {{ .Chart.Name }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
           ports:
-            - containerPort: 8080
+            - containerPort: {{ .Values.deployment.containerPort }}
           env:
             - name: PAGE_CONTENT
               valueFrom:
                 configMapKeyRef:
-                  name: pages
+                  name: {{ .Chart.Name }}
                   key: PAGE_CONTENT
             - name: SPRING_DATASOURCE_URL
-              value: jdbc:mysql://mysql/pages?useSSL=false
+              value: {{ include "api.getdbserviceurl" . }}
             - name: SPRING_DATASOURCE_USERNAME
-              value: "root"
+              value: {{ .Values.env.SPRING_DATASOURCE_USERNAME | quote}}
             - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: mysql
+                  name: {{ include "api.fullname" . }}
                   key: password
+            {{- with .Values.env }}
             - name: DEBUG
-              value: "true"
+              value: {{ .DEBUG | quote}}
             - name: LOGGING_FILE_NAME
-              value: "ambala/logs/app.log"
+              value: {{ .LOGGING_FILE_NAME | quote}}
             - name: LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB
-              value: debug
+              value: {{ .LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_WEB }}
             - name: LOGGING_LEVEL_ROOT
-              value: debug
+              value: {{ .LOGGING_LEVEL_ROOT }}
+            {{- end }}
             - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
               value: "*"
           volumeMounts:
             - name: node-dir
-              mountPath: /ambala
+              mountPath: /{{ .Release.Namespace }}
           readinessProbe:
             tcpSocket:
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 30
+              port: {{ .Values.readinessProbe.tcpSocket.port }}
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
           livenessProbe:
             httpGet:
-              path: /actuator/health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 30
+              path: {{ .Values.livenessProbe.httpGet.path }}
+              port: {{ .Values.livenessProbe.httpGet.port }}
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
       volumes:
         - name: node-dir
           hostPath:
-            path: /ambala
+            path: /{{ .Release.Namespace }}
